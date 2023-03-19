@@ -7,10 +7,15 @@ A tool for fixing up Portal 2 demos recorded prior to game build 8873 to play on
 Command-line usage:
 
     ./demofixup in.dem [out.dem]
+    ./demofixup in_dir [out_dir]
 
-If `out.dem` is not specified, it defaults to `in_fixed.dem`.
+If `out.dem` is not specified, it defaults to `in_fixed.dem`. If `out_dir` is not specified, it
+defaults to `in_dir_fixed`.
 
-This usage means that on Windows, you can drag and drop a demo file onto the binary to convert it.
+Applying `demofixup` to a directory recursively fixes up every demo in the entire directory tree.
+
+This usage means that on Windows, you can drag and drop a demo file onto the binary to convert it,
+or drag and drop an entire directory to recursively convert every demo in it.
 
 ## Details
 

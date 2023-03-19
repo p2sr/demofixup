@@ -1,33 +1,73 @@
 const std = @import("std");
 
-pub fn main() !u8 {
+fn err(comptime fmt: []const u8, args: anytype) u8 {
+    std.io.getStdErr().writer().print(fmt ++ "\n", args) catch {};
+    return 1;
+}
+
+pub fn main() u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const ally = arena.allocator();
 
-    const args = try std.process.argsAlloc(ally);
+    const args = std.process.argsAlloc(ally) catch return err("oom", .{});
     if (args.len != 2 and args.len != 3) {
-        std.io.getStdErr().writer().print(
-            "usage: {s} <in name> [out name]\n",
+        return err(
+            "usage: {s} <in name> [out name]",
             .{if (args.len > 0) args[0] else "demofixup"},
-        ) catch {};
-        return 1;
+        );
     }
 
     const in_name = args[1];
-    const out_name = if (args.len == 3) args[2] else blk: {
-        const base = if (std.mem.endsWith(u8, in_name, ".dem") or std.mem.endsWith(u8, in_name, ".DEM"))
-            in_name[0 .. in_name.len - 4]
-        else
-            in_name;
-        break :blk try std.fmt.allocPrint(ally, "{s}_fixed.dem", .{base});
-    };
+    const out_name = if (args.len == 3)
+        args[2]
+    else if (std.mem.endsWith(u8, in_name, ".dem") or std.mem.endsWith(u8, in_name, ".DEM"))
+        std.fmt.allocPrint(ally, "{s}_fixed.dem", .{in_name[0 .. in_name.len - 4]}) catch return err("oom", .{})
+    else
+        std.fmt.allocPrint(ally, "{s}_fixed", .{std.mem.trimRight(u8, in_name, "/\\")}) catch return err("oom", .{});
 
-    var in_file = try std.fs.cwd().openFile(in_name, .{});
-    defer in_file.close();
-    var out_file = try std.fs.cwd().createFile(out_name, .{});
-    defer out_file.close();
+    const stat = std.fs.cwd().statFile(in_name) catch |e| return err("error on stat {s}: {}", .{ in_name, e });
+    switch (stat.kind) {
+        .File => {
+            var in_file = std.fs.cwd().openFile(in_name, .{}) catch |e| return err("failed to open {s}: {}", .{ in_name, e });
+            defer in_file.close();
+            var out_file = std.fs.cwd().createFile(out_name, .{}) catch |e| return err("failed to open {s}: {}", .{ out_name, e });
+            defer out_file.close();
+            fixupDemo(&in_file, &out_file, ally) catch |e| return err("failed to fixup {s}: {}", .{ in_name, e });
+            std.io.getStdOut().writer().print("successfully wrote {s}!\n", .{out_name}) catch {};
+        },
+        .Directory => {
+            var in_dir = std.fs.cwd().openIterableDir(in_name, .{}) catch |e| return err("failed to open dir {s}: {}", .{ in_name, e });
+            defer in_dir.close();
 
+            var out_dir = std.fs.cwd().makeOpenPath(out_name, .{}) catch |e| return err("failed to open dir {s}: {}", .{ out_name, e });
+            defer out_dir.close();
+
+            var walker = in_dir.walk(ally) catch |e| return err("failed to walk dir {s}: {}", .{ in_name, e });
+            while (walker.next() catch |e| return err("failed to iterate dir: {}", .{e})) |ent| {
+                if (ent.kind != .File) continue;
+
+                // create the output dir
+                if (std.fs.path.dirname(ent.path)) |dirname| {
+                    out_dir.makePath(dirname) catch |e| return err("failed to make out dir {s}: {}", .{ dirname, e });
+                }
+
+                var in_file = ent.dir.openFile(ent.basename, .{}) catch |e| return err("failed to open {s}{c}{s}: {}", .{ in_name, std.fs.path.sep, ent.path, e });
+                defer in_file.close();
+                var out_file = out_dir.createFile(ent.path, .{}) catch |e| return err("failed to open {s}{c}{s}: {}", .{ out_name, std.fs.path.sep, ent.path, e });
+                defer out_file.close();
+                fixupDemo(&in_file, &out_file, ally) catch |e| return err("failed to fixup {s}{c}{s}: {}", .{ in_name, std.fs.path.sep, ent.path, e });
+                std.io.getStdOut().writer().print("successfully wrote {s}{c}{s}!\n", .{ out_name, std.fs.path.sep, ent.path }) catch {};
+            }
+            std.io.getStdOut().writer().print("successfully wrote directory {s}!\n", .{out_name}) catch {};
+        },
+        else => |k| return err("bad file kind: {}", .{k}),
+    }
+
+    return 0;
+}
+
+fn fixupDemo(in_file: *std.fs.File, out_file: *std.fs.File, ally: std.mem.Allocator) !void {
     var buf_rd = std.io.bufferedReader(in_file.reader());
     var buf_wr = std.io.bufferedWriter(out_file.writer());
 
@@ -95,9 +135,6 @@ pub fn main() !u8 {
     try fifo.pump(in_rd, out_wr);
 
     try buf_wr.flush();
-
-    std.io.getStdOut().writer().print("Successfully wrote {s}!\n", .{out_name}) catch {};
-    return 0;
 }
 
 fn clone(in: anytype, out: anytype, n: usize) !void {
