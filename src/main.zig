@@ -11,7 +11,7 @@ fn countDirFiles(dir: std.fs.IterableDir, ally: std.mem.Allocator) !u32 {
 
     var count: u32 = 0;
     while (try walker.next()) |ent| {
-        if (ent.kind == .File) {
+        if (ent.kind == .file) {
             count += 1;
         }
     }
@@ -67,9 +67,12 @@ pub fn main() u8 {
         }
     }
 
-    const stat = std.fs.cwd().statFile(in_name.?) catch |e| return err("error on stat {s}: {}", .{ in_name.?, e });
-    switch (stat.kind) {
-        .File => {
+    const kind: std.fs.File.Kind = if (std.fs.cwd().statFile(in_name.?)) |stat| stat.kind else |e| switch (e) {
+        error.IsDir => .directory,
+        else => return err("error on stat {s}: {}", .{ in_name.?, e }),
+    };
+    switch (kind) {
+        .file => {
             var progress: std.Progress = .{};
 
             const root_prog_node = progress.start("run fixup", 1);
@@ -82,7 +85,7 @@ pub fn main() u8 {
 
             std.io.getStdOut().writer().print("successfully wrote {s}!\n", .{out_name.?}) catch {};
         },
-        .Directory => {
+        .directory => {
             var in_dir = std.fs.cwd().openIterableDir(in_name.?, .{}) catch |e| return err("failed to open dir {s}: {}", .{ in_name.?, e });
             defer in_dir.close();
 
@@ -131,7 +134,7 @@ fn fixupDir(
     defer walker.deinit();
 
     while (walker.next() catch |e| return err("failed to iterate dir: {}", .{e})) |ent| {
-        if (ent.kind != .File) continue;
+        if (ent.kind != .file) continue;
 
         // create the output dir
         if (std.fs.path.dirname(ent.path)) |dirname| {
