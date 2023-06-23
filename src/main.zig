@@ -315,7 +315,7 @@ fn doDataTableStuff(in_rd: anytype, out_wr: anytype, ally: std.mem.Allocator) !v
                 const extra_len: usize = switch (prop_ty) {
                     0...4 => 64 + 7,
                     5 => 10, // array
-                    else => @panic("bad sendtable prop type"),
+                    else => return error.BadDemo,
                 };
 
                 if (!skip) {
@@ -338,7 +338,7 @@ fn doDataTableStuff(in_rd: anytype, out_wr: anytype, ally: std.mem.Allocator) !v
         const dt_name = try readStr(br, ally);
         if (std.mem.eql(u8, dt_name, "DT_PointSurvey\x00")) {
             if (!std.mem.eql(u8, class_name, "CPointSurvey\x00")) {
-                @panic("bad class name using DT_PointSurvey");
+                return error.BadDemo;
             }
             try bw.writeBits(class_id, 16);
             try bw.writer().writeAll("CPointCamera\x00");
