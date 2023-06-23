@@ -288,7 +288,7 @@ fn doDataTableStuff(in_rd: anytype, out_wr: anytype, ally: std.mem.Allocator) !v
 
         if (!skip) {
             try bw.writeBits(@as(u1, 1), 1); // presence bit
-            try bw.writeBits(@boolToInt(needs_dec), 1);
+            try bw.writeBits(@intFromBool(needs_dec), 1);
             try bw.writer().writeAll(table_name);
             try bw.writeBits(num_props, 10);
         }
